@@ -981,14 +981,15 @@ fn settings_ui(
                 let pool = AsyncComputeTaskPool::get();
                 picker.task = Some(pool.spawn(async {
                     rfd::AsyncFileDialog::new()
-                        .add_filter("Image", IMAGE_EXTS)
-                        .add_filter("Video", VIDEO_EXTS)
+                        // "All media" first so it's the default filter on Windows/macOS.
                         .add_filter(
                             "All media",
                             &[
                                 "png", "jpg", "jpeg", "webp", "mp4", "mov", "m4v", "webm", "mkv",
                             ],
                         )
+                        .add_filter("Image", IMAGE_EXTS)
+                        .add_filter("Video", VIDEO_EXTS)
                         .pick_file()
                         .await
                         .map(|f| f.path().to_path_buf())
