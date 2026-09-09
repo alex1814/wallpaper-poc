@@ -2,7 +2,7 @@ name: Build Windows
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   workflow_dispatch:  # manual "Run workflow" button
 
 # Needed so the job can create/update a GitHub Release.
