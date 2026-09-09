@@ -1,0 +1,78 @@
+name: Build macOS
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    # macos-latest is Apple Silicon (arm64). Intel Macs would need a separate
+    # macos-13 job and a universal binary.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install FFmpeg 7 + build tools
+        run: |
+          brew install ffmpeg@7 pkg-config dylibbundler
+          # cargo-bundle for building the .app; taiki-e/install-action pulls a
+          # prebuilt binary so we don't wait on a from-source install.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-bundle
+
+      - name: Build .app bundle
+        env:
+          PKG_CONFIG_PATH: /opt/homebrew/opt/ffmpeg@7/lib/pkgconfig
+        run: cargo bundle --release
+
+      - name: Bundle dylibs into the .app
+        run: |
+          APP="target/release/bundle/osx/Wallpaper PoC.app"
+          BINARY="$APP/Contents/MacOS/wallpaper_poc"
+          FRAMEWORKS="$APP/Contents/Frameworks"
+          mkdir -p "$FRAMEWORKS"
+          dylibbundler \
+            --overwrite-files \
+            --bundle-deps \
+            --create-dir \
+            --fix-file "$BINARY" \
+            --dest-dir "$FRAMEWORKS" \
+            --install-path "@executable_path/../Frameworks/"
+          # Sanity check: any /opt/homebrew reference would break on other Macs.
+          if otool -L "$BINARY" | grep -q "/opt/homebrew"; then
+            echo "!! binary still references /opt/homebrew — bundling incomplete"
+            otool -L "$BINARY" | grep "/opt/homebrew"
+            exit 1
+          fi
+
+      - name: Zip
+        run: |
+          cd target/release/bundle/osx
+          zip -qr "$GITHUB_WORKSPACE/wallpaper-poc-macos.zip" "Wallpaper PoC.app"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wallpaper-poc-macos
+          path: wallpaper-poc-macos.zip
+
+      - name: Publish to rolling nightly release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Nightly build
+          body: |
+            Automated build.
+            Commit: ${{ github.sha }}
+          files: wallpaper-poc-macos.zip
+          prerelease: true
+          make_latest: false
