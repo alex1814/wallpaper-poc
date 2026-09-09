@@ -1,6 +1,6 @@
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-use windows::core::{BOOL, PCWSTR};
-use windows::Win32::Foundation::{HWND, LPARAM, TRUE, WPARAM};
+use windows::core::PCWSTR;
+use windows::Win32::Foundation::{BOOL, HWND, LPARAM, TRUE, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, FindWindowExW, FindWindowW, GetWindowLongPtrW, SendMessageTimeoutW,
     SetParent, SetWindowLongPtrW, GWL_STYLE, SMTO_NORMAL, WS_CHILD, WS_POPUP,
