@@ -144,10 +144,13 @@ fn apply_attach_state(
 
         #[cfg(target_os = "windows")]
         {
-            if attached.0 {
-                if let Err(e) = windows::attach_to_desktop(window) {
-                    warn!("Windows desktop attach failed on {:?}: {e}", entity);
-                }
+            let result = if attached.0 {
+                windows::attach_to_desktop(window)
+            } else {
+                windows::detach_from_desktop(window)
+            };
+            if let Err(e) = result {
+                warn!("Windows desktop toggle failed on {:?}: {e}", entity);
             }
         }
 
