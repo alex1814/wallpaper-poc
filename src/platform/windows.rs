@@ -1,8 +1,9 @@
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-use windows::core::{PCWSTR, BOOL};
+use windows::core::{BOOL, PCWSTR};
 use windows::Win32::Foundation::{HWND, LPARAM, TRUE, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, FindWindowExW, FindWindowW, SendMessageTimeoutW, SetParent, SMTO_NORMAL,
+    EnumWindows, FindWindowExW, FindWindowW, GetWindowLongPtrW, SendMessageTimeoutW,
+    SetParent, SetWindowLongPtrW, GWL_STYLE, SMTO_NORMAL, WS_CHILD, WS_POPUP,
 };
 
 // Undocumented but stable message: asks Progman to spawn a pair of WorkerWs
@@ -32,6 +33,7 @@ pub fn attach_to_desktop(window: &winit::window::Window) -> Result<(), String> {
             1000,
             Some(&mut result),
         );
+        eprintln!("[win] Progman poked, WorkerW spawn requested");
 
         // 2) Enumerate top-level windows to find the WorkerW that is a sibling
         //    of the top-level window holding SHELLDLL_DefView. That sibling is
@@ -45,9 +47,20 @@ pub fn attach_to_desktop(window: &winit::window::Window) -> Result<(), String> {
         if worker_w.0.is_null() {
             return Err("could not locate the target WorkerW".into());
         }
+        eprintln!("[win] Found WorkerW: {:?}", worker_w.0);
 
-        // 3) Reparent our window so it sits between wallpaper and icons.
+        // 3) Reparenting a WS_POPUP/WS_OVERLAPPED window can leave it visually
+        //    on top of the parent's children. Convert to WS_CHILD first so it
+        //    genuinely sits inside WorkerW behind the icon layer.
+        let style = GetWindowLongPtrW(our_hwnd, GWL_STYLE);
+        let cleared = style & !(WS_POPUP.0 as isize);
+        let new_style = cleared | (WS_CHILD.0 as isize);
+        SetWindowLongPtrW(our_hwnd, GWL_STYLE, new_style);
+        eprintln!("[win] Style updated: 0x{:x} -> 0x{:x}", style, new_style);
+
+        // 4) Reparent our window so it sits between wallpaper and icons.
         SetParent(our_hwnd, worker_w).map_err(|e| format!("SetParent failed: {e}"))?;
+        eprintln!("[win] SetParent OK");
     }
 
     Ok(())
@@ -72,8 +85,7 @@ unsafe extern "system" fn enum_windows_proc(top_handle: HWND, lparam: LPARAM) ->
                 if !sibling.0.is_null() {
                     let out = lparam.0 as *mut HWND;
                     *out = sibling;
-                    // Returning FALSE tells EnumWindows to stop.
-                    return BOOL(0);
+                    return BOOL(0); // stop enumeration
                 }
             }
         }
