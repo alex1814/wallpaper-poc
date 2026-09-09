@@ -32,7 +32,14 @@ winit = "0.30"
 rfd = "0.15"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 futures-lite = "2"
-ffmpeg-next = "7"
+# We only demux + decode video and rescale frames. libavdevice (which pulls in
+# SDL2/SDL3 on macOS) and libavfilter are unused, so drop them from the link.
+ffmpeg-next = { version = "7", default-features = false, features = [
+    "codec",
+    "format",
+    "software-scaling",
+    "software-resampling",
+] }
 crossbeam-channel = "0.5"
 tray-icon = "0.19"
 serde = { version = "1", features = ["derive"] }
