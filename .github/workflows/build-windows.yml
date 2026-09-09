@@ -1,0 +1,100 @@
+name: Build Windows
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:  # manual "Run workflow" button
+
+# Needed so the job can create/update a GitHub Release.
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      # ffmpeg-next 7.x links against FFmpeg 7. BtbN publishes prebuilt Windows
+      # dev libs for specific FFmpeg versions; walk their releases to find the
+      # most recent win64 shared build for FFmpeg 7.
+      - name: Locate FFmpeg 7 build
+        id: ffmpeg
+        shell: pwsh
+        run: |
+          $headers = @{}
+          if ($env:GITHUB_TOKEN) { $headers["Authorization"] = "Bearer $env:GITHUB_TOKEN" }
+          $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases?per_page=100" -Headers $headers
+          $asset = $null
+          foreach ($release in $releases) {
+            foreach ($a in $release.assets) {
+              if ($a.name -match '^ffmpeg-n7\.\d+.*win64-gpl-shared.*\.zip$') {
+                $asset = $a
+                break
+              }
+            }
+            if ($asset) { break }
+          }
+          if (-not $asset) { throw "No FFmpeg 7.x win64 shared build found on BtbN" }
+          Write-Host "Selected asset: $($asset.name)"
+          "url=$($asset.browser_download_url)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download & extract FFmpeg
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "${{ steps.ffmpeg.outputs.url }}" -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg-dist
+          $ffmpegDir = (Get-ChildItem ffmpeg-dist -Directory | Select-Object -First 1).FullName
+          Write-Host "FFMPEG_DIR = $ffmpegDir"
+          "FFMPEG_DIR=$ffmpegDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Build (release)
+        shell: pwsh
+        run: cargo build --release
+
+      - name: Assemble dist
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target\release\wallpaper_poc.exe dist\
+          Copy-Item "$env:FFMPEG_DIR\bin\*.dll" dist\
+          # A short README that ships with the zip.
+          @"
+          Wallpaper PoC — Windows build
+
+          Run wallpaper_poc.exe. Keep the .dll files next to it.
+          Requires Windows 10+ on x64.
+
+          Build: $(git rev-parse --short HEAD) — $(Get-Date -Format o)
+          "@ | Out-File -Encoding utf8 dist\README.txt
+
+      - name: Zip
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist\* -DestinationPath wallpaper-poc-windows.zip -Force
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wallpaper-poc-windows
+          path: wallpaper-poc-windows.zip
+
+      # Publish (or refresh) a rolling "nightly" release so the download URL
+      # stays stable: https://github.com/<user>/<repo>/releases/download/nightly/wallpaper-poc-windows.zip
+      - name: Publish rolling nightly release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Nightly build
+          body: |
+            Automated Windows build.
+            Commit: ${{ github.sha }}
+          files: wallpaper-poc-windows.zip
+          prerelease: true
+          make_latest: false

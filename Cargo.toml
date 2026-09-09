@@ -1,0 +1,64 @@
+[package]
+name = "wallpaper_poc"
+version = "0.1.0"
+edition = "2024"
+
+[package.metadata.bundle]
+name = "Wallpaper PoC"
+identifier = "com.alexyun.wallpaper-poc"
+short_description = "Live wallpaper prototype"
+long_description = "Cross-platform live wallpaper built with Bevy + egui."
+category = "Utility"
+osx_minimum_system_version = "11.0"
+
+[dependencies]
+bevy = { version = "0.15", default-features = false, features = [
+    "bevy_winit",
+    "bevy_window",
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_sprite",
+    "bevy_asset",
+    "x11",
+    "wayland",
+    "png",
+    "tonemapping_luts",
+    "webgl2",
+    "multi_threaded",
+] }
+bevy_egui = "0.31"
+raw-window-handle = "0.6"
+winit = "0.30"
+rfd = "0.15"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+futures-lite = "2"
+ffmpeg-next = "7"
+crossbeam-channel = "0.5"
+tray-icon = "0.19"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "5"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.5"
+objc2-app-kit = { version = "0.2", features = ["NSWindow", "NSView", "NSResponder", "NSApplication"] }
+objc2-foundation = "0.2"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Gdi",
+] }
+
+# Dev profile: fast incremental builds
+[profile.dev]
+opt-level = 1
+
+# Dependencies compiled with optimizations even in dev
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
